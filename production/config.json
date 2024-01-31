@@ -1,0 +1,7 @@
+{
+    "vocab_size": 60000,
+    "embed_dim": 240,
+    "num_layers": 12,
+    "num_heads": 6,
+    "dropout": 0.2
+}
