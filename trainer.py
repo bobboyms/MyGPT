@@ -9,21 +9,23 @@ from tokenizers import Tokenizer
 
 if __name__ == "__main__":
 
-    tokenizer = Tokenizer.from_file("dataset/portuguese/tokenizer.json")
+    tokenizer_file = "dataset/portuguese/tokenizer.json"
+
+    tokenizer = Tokenizer.from_file(tokenizer_file)
     vocab = tokenizer.get_vocab()
 
     vocab_size = len(vocab)
     print("Tamanho do Vocabulário:", vocab_size)
 
     train_dataset = NextWordPredictionDataset(
-        'dataset/portuguese/train.csv')
+        'dataset/portuguese/little_train.csv')
     test_dataset = NextWordPredictionDataset(
-        'dataset/portuguese/test.csv')
+        'dataset/portuguese/little_test.csv')
 
     embed_dim = 240
     num_heads = 6
-    dropout = 0.2
-    num_layers = 12
+    dropout = 0.3
+    num_layers = 6
 
     data = {
         "vocab_size": vocab_size,
@@ -44,8 +46,7 @@ if __name__ == "__main__":
 
     device = get_device()
     print(f"Device: {device}")
-    batch_size = 170
+    batch_size = 200
     print(f"Batch Size: {batch_size}")
     trainer = Trainer(model, train_dataset, test_dataset, device, batch_size)
     trainer.train(num_epochs=200)
-

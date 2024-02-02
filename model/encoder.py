@@ -58,8 +58,11 @@ class Encoder(nn.Module):
                           num_heads=num_heads, dropout=dropout) for _ in range(num_layers)])
 
         self.ff = nn.Sequential(
-            nn.Linear(embed_dim, embed_dim),
-            nn.LeakyReLU(),
+            nn.Linear(embed_dim, embed_dim * 2),
+            nn.GELU(),
+            nn.Linear(embed_dim * 2, embed_dim),
+            nn.Dropout(dropout),
+            # nn.GELU(),
         )
 
     def forward(self, x: torch.Tensor, padding_mask: torch.Tensor) -> torch.Tensor:

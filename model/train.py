@@ -1,18 +1,13 @@
+import math
 import logging
 import torch
 import numpy as np
 import torch.nn as nn
-import torch.optim as optim
 from torch.utils.data import DataLoader
-import torch.nn.init as init
-from torch.optim.lr_scheduler import ReduceLROnPlateau
 from model.metrics import perplexity
 from torch.utils.data import Dataset
 from typing import Tuple
 from torch.optim import AdamW
-
-
-# Define a semente de aleatoriedade
 torch.manual_seed(42)
 np.random.seed(42)
 
@@ -20,6 +15,34 @@ logging.basicConfig(level=logging.DEBUG,
                     format='%(asctime)s %(levelname)s:%(message)s',
                     filename='training.log',
                     filemode='a')
+
+
+class CustomLRScheduler(torch.optim.lr_scheduler._LRScheduler):
+    def __init__(self, optimizer, warmup_iters, lr_decay_iters, learning_rate, min_lr, last_epoch=-1):
+        self.warmup_iters = warmup_iters
+        self.lr_decay_iters = lr_decay_iters
+        self.learning_rate = learning_rate
+        self.min_lr = min_lr
+        super(CustomLRScheduler, self).__init__(optimizer, last_epoch)
+
+    def get_lr(self):
+        if self._step_count < self.warmup_iters:
+            # Linear warmup
+            lr = self.learning_rate * self._step_count / self.warmup_iters
+        elif self._step_count > self.lr_decay_iters:
+            # After lr_decay_iters, return min_lr
+            lr = self.min_lr
+        else:
+            # Cosine decay
+            decay_ratio = (self._step_count - self.warmup_iters) / \
+                (self.lr_decay_iters - self.warmup_iters)
+            assert 0 <= decay_ratio <= 1
+            # coeff ranges from 0 to 1
+            coeff = 0.5 * (1.0 + math.cos(math.pi * decay_ratio))
+            lr = self.min_lr + coeff * (self.learning_rate - self.min_lr)
+
+        # lr = self.learning_rate
+        return [lr for _ in self.optimizer.param_groups]
 
 
 class Trainer:
@@ -49,39 +72,46 @@ class Trainer:
         self.model = self.initialize_weights(model)
 
         # Configuração do Otimizador e Scheduler
-        # optim.Adam(self.model.parameters(), lr=0.001, weight_decay=1e-3)
         self.optimizer = AdamW(self.model.parameters(),
-                               lr=0.0001, weight_decay=1e-3)
-        self.scheduler = ReduceLROnPlateau(
-            self.optimizer, 'min', factor=0.1, patience=3, verbose=True)
+                               lr=3.6e-05, weight_decay=1e-1)  # 3.6e-05
+
+        iterations = self.train_dataset.__len__() // batch_size
+        warmup_iters = 2000  # 5 * iterations
+        lr_decay_iters = 100000  # iterations * batch_size
+        self.scheduler = CustomLRScheduler(
+            self.optimizer, warmup_iters=warmup_iters, lr_decay_iters=lr_decay_iters, learning_rate=6e-4, min_lr=3.6e-6)
+
         self.loss_fn = nn.CrossEntropyLoss()
         self.epoch_print = 1000
 
     def initialize_weights(self, model: nn.Module) -> nn.Module:
         """
-        Inicializa os pesos do modelo usando Kaiming Normal Initialization.
+        Inicializa os pesos de um modelo Transformer.
 
-        Args:
-        model (nn.Module): Modelo de rede neural.
+        Parâmetros:
+            model (torch.nn.Module): Modelo Transformer a ser inicializado.
 
-        Returns:
-        nn.Module: Modelo com pesos inicializados.
+        Retorna:
+            torch.nn.Module: Modelo com pesos inicializados.
         """
-        # for layer in model.modules():
-        #     if isinstance(layer, (nn.Linear, nn.Conv2d)):
-        #         init.kaiming_normal_(
-        #             layer.weight, mode='fan_in', nonlinearity='relu')
-        for layer in model.modules():
-            if isinstance(layer, nn.Linear):
-                torch.nn.init.normal_(layer.weight, mean=0.0, std=0.02)
-                if layer.bias is not None:
-                    torch.nn.init.zeros_(layer.bias)
-            elif isinstance(layer, nn.Embedding):
-                torch.nn.init.normal_(layer.weight, mean=0.0, std=0.02)
+        for module in model.modules():
+            if isinstance(module, nn.Linear):
+                # Inicializa os pesos da camada linear com uma distribuição normal
+                nn.init.normal_(module.weight, mean=0.0, std=0.02)
+                # Inicializa os bias da camada linear com zero, se houver
+                if module.bias is not None:
+                    nn.init.zeros_(module.bias)
+            elif isinstance(module, nn.Embedding):
+                # Inicializa os pesos da camada de embedding com uma distribuição normal
+                nn.init.normal_(module.weight, mean=0.0, std=0.02)
+            elif isinstance(module, nn.LayerNorm):
+                # Inicializa os pesos da LayerNorm com 1 e bias com 0
+                nn.init.ones_(module.weight)
+                nn.init.zeros_(module.bias)
 
         return model.to(device=self.mps_device)
 
-    def calc_loss(self, inputs, labels):
+    def calc_loss(self, inputs: torch.Tensor, labels: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         logits = self.model(inputs, None)
 
         logits_flattened = logits.view(-1, logits.size(-1))
@@ -114,13 +144,17 @@ class Trainer:
             total_perplexity += perplexity
 
             loss.backward()
+
+            # Aplica gradient clipping para evitar o problema de explosão de gradientes
+            torch.nn.utils.clip_grad_norm_(
+                self.model.parameters(), max_norm=1.0)
+
             self.optimizer.step()
 
             if epoch % self.epoch_print == 0:
                 torch.save(self.model.state_dict(), 'production/model.pth')
                 # print(
                 #     f'Train Epoch: {epoch + 1}/{len(self.train_loader)}, Loss: {loss.item()}, Perplexity: {perplexity}')
-
             epoch += 1
 
         avg_loss = total_loss / len(self.train_loader)
@@ -157,7 +191,7 @@ class Trainer:
         avg_perplexity = total_perplexity / len(self.train_loader)
         return avg_loss, avg_perplexity
 
-    def train(self, num_epochs: int = 500) -> None:
+    def train(self, num_epochs: int = 5000) -> None:
         """
         Executa o processo de treinamento, alternando entre treino e teste, e aplicando parada antecipada se necessário.
         """
@@ -167,17 +201,14 @@ class Trainer:
             train_loss, train_perplexity = self.train_epoch()
             test_loss, test_perplexity = self.test_epoch()
 
-            self.scheduler.step(train_loss)
+            self.scheduler.step()
 
             msg = f'Epoch: {epoch + 1}/{num_epochs}, Train Loss: {train_loss}, Train Perplexity: {train_perplexity}, Test Loss: {test_loss}, Test Perplexity: {test_perplexity}'
             logging.info(msg)
             print(msg)
 
-            # print(msg)
-
-            # if epoch % 10 == 0 or epoch == 0:
-            #     print(
-            #         f'Epoch: {epoch + 1}/{num_epochs}, Train Loss: {train_loss}, Train Acc: {train_accuracy}, Test Loss: {test_loss}, Test Acc: {test_accuracy}')
+            for group in self.optimizer.param_groups:
+                print("Current learning rate:", group['lr'])
 
             # Verificação de parada antecipada
             if test_loss < best_loss:

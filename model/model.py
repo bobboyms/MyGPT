@@ -14,7 +14,6 @@ class ModelLLM(nn.Module):
             embed_dim (int): The dimensionality of the input embeddings.
             num_heads (int): The number of attention heads.
             dropout (float): The dropout rate.
-            num_classes (int): The number of classes for classification.
             num_layers (int): The number of layers in the encoder.
         """
         super(ModelLLM, self).__init__()
@@ -26,7 +25,7 @@ class ModelLLM(nn.Module):
 
     def forward(self, x: torch.Tensor, padding_mask: torch.Tensor) -> torch.Tensor:
         """
-        Forward pass of the ModelXT module.
+        Forward pass of the ModelLLM module.
 
         Args:
             x (torch.Tensor): The input tensor.
@@ -37,15 +36,4 @@ class ModelLLM(nn.Module):
         """
         logits = self.encoder(x, padding_mask)
         logits = self.linear(logits)
-        # # Última posição da sequência na saída do modelo
-        # last_position_logits = logits[0, -1, :]
-
-        # # Aplicar softmax para obter as probabilidades
-        # last_position_probabilities = F.softmax(last_position_logits, dim=-1)
-
-        # # Encontrar o índice da maior probabilidade na última posição
-        # _, predicted_index = torch.max(last_position_probabilities, dim=-1)
-
-        # predicted_index.item()
-
         return logits

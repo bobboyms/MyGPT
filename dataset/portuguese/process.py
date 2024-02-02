@@ -63,5 +63,5 @@ test_df = pd.DataFrame(np.array(test_dataset))
 train_df.to_csv("train.csv", index=False, header=False)
 test_df.to_csv("test.csv", index=False, header=False)
 
-copy_lines("train.csv", "little_train.csv", num_linhas=10000)
+copy_lines("train.csv", "little_train.csv", num_linhas=100000)
 copy_lines("test.csv", "little_test.csv", num_linhas=3000)

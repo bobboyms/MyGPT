@@ -5,88 +5,75 @@ import math
 
 
 # class CausalSelfAttention(nn.Module):
+
 #     def __init__(self, embed_dim, heads, dropout):
 #         super().__init__()
-#         self.embed_dim = embed_dim
-#         self.heads = heads
-#         self.head_dim = embed_dim // heads
-#         self.dropout = nn.Dropout(dropout)
-
-#         assert (
-#             self.head_dim * heads == embed_dim
-#         ), "Embedding size needs to be divisible by heads"
-
-#         self.c_attn = nn.Linear(embed_dim, 3 * embed_dim, bias=False)
+#         assert embed_dim % heads == 0
+#         self.c_attn = nn.Linear(
+#             embed_dim, 3 * embed_dim, bias=False)
 #         self.c_proj = nn.Linear(embed_dim, embed_dim, bias=False)
 #         self.attn_dropout = nn.Dropout(dropout)
 #         self.resid_dropout = nn.Dropout(dropout)
+#         self.n_head = heads
+#         self.n_embd = embed_dim
+#         self.dropout = dropout
 
-#     def forward(self, x, mask=None):
-#         print(x.shape)
-#         B, T, C = x.size()
+#     def forward(self, x, mask):
+#         B, T, C = x.size()  # batch size, sequence length, embedding dimensionality (n_embd)
 
-#         # Projeção linear e divisão em q, k, v
-#         q, k, v = self.c_attn(x).split(self.embed_dim, dim=2)
-#         q = q.view(B, T, self.heads, self.head_dim).transpose(1, 2)
-#         k = k.view(B, T, self.heads, self.head_dim).transpose(1, 2)
-#         v = v.view(B, T, self.heads, self.head_dim).transpose(1, 2)
+#         # calculate query, key, values for all heads in batch and move head forward to be the batch dim
+#         q, k, v = self.c_attn(x).split(self.n_embd, dim=2)
+#         k = k.view(B, T, self.n_head, C //
+#                    self.n_head).transpose(1, 2)  # (B, nh, T, hs)
+#         q = q.view(B, T, self.n_head, C //
+#                    self.n_head).transpose(1, 2)  # (B, nh, T, hs)
+#         v = v.view(B, T, self.n_head, C //
+#                    self.n_head).transpose(1, 2)  # (B, nh, T, hs)
 
-#         # Cálculo da atenção
-#         att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))
-#         if mask is not None:
-#             att = att.masked_fill(mask == 0, float('-inf'))
-#         att = F.softmax(att, dim=-1)
-#         att = self.attn_dropout(att)
-#         y = att @ v
+#         y = F.scaled_dot_product_attention(
+#             q, k, v, attn_mask=None,
+#             dropout_p=self.dropout if self.training else 0,
+#             is_causal=True)
 
-#         # Reagrupar as cabeças e aplicar a projeção de saída
+#         # re-assemble all head outputs side by side
 #         y = y.transpose(1, 2).contiguous().view(B, T, C)
+#         # output projection
 #         y = self.resid_dropout(self.c_proj(y))
-
 #         return y
 
+# Esse código "CausalSelfAttention" foi inspirado no código do Andrej karpathy
+# https://github.com/karpathy/nanoGPT/blob/master/model.py#L29
 class CausalSelfAttention(nn.Module):
-
-    def __init__(self, embed_dim, heads, dropout):
+    def __init__(self, embed_dim: int, heads: int, dropout: float):
         super().__init__()
-        assert embed_dim % heads == 0
-        # key, query, value projections for all heads, but in a batch
-        self.c_attn = nn.Linear(
-            embed_dim, 3 * embed_dim, bias=False)
-        # output projection
+        if embed_dim % heads != 0:
+            raise ValueError("embed_dim deve ser divisível por heads")
+        self.c_attn = nn.Linear(embed_dim, 3 * embed_dim, bias=False)
         self.c_proj = nn.Linear(embed_dim, embed_dim, bias=False)
-        # regularization
         self.attn_dropout = nn.Dropout(dropout)
         self.resid_dropout = nn.Dropout(dropout)
         self.n_head = heads
         self.n_embd = embed_dim
         self.dropout = dropout
-        # flash attention make GPU go brrrrr but support is only in PyTorch >= 2.0
-        self.flash = hasattr(torch.nn.functional,
-                             'scaled_dot_product_attention')
 
-    def forward(self, x, mask):
-        B, T, C = x.size()  # batch size, sequence length, embedding dimensionality (n_embd)
+    def _split_heads(self, x: torch.Tensor) -> torch.Tensor:
+        B, T, C = x.size()
+        x = x.view(B, T, self.n_head, C // self.n_head).transpose(1, 2)
+        return x
 
-        # calculate query, key, values for all heads in batch and move head forward to be the batch dim
+    def forward(self, x: torch.Tensor, mask: torch.Tensor = None) -> torch.Tensor:
+        B, T, C = x.size()
+
+        # calcular query, key, values para todos os heads em batch
         q, k, v = self.c_attn(x).split(self.n_embd, dim=2)
-        k = k.view(B, T, self.n_head, C //
-                   self.n_head).transpose(1, 2)  # (B, nh, T, hs)
-        q = q.view(B, T, self.n_head, C //
-                   self.n_head).transpose(1, 2)  # (B, nh, T, hs)
-        v = v.view(B, T, self.n_head, C //
-                   self.n_head).transpose(1, 2)  # (B, nh, T, hs)
-
-        # print("self.dropout", self.dropout)
+        q, k, v = map(self._split_heads, [q, k, v])
 
         y = F.scaled_dot_product_attention(
-            q, k, v, attn_mask=None,
+            q, k, v, attn_mask=mask,
             dropout_p=self.dropout if self.training else 0,
             is_causal=True)
 
-        # re-assemble all head outputs side by side
         y = y.transpose(1, 2).contiguous().view(B, T, C)
-        # output projection
         y = self.resid_dropout(self.c_proj(y))
         return y
 
