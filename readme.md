@@ -1,4 +1,4 @@
-# MyLLM
+# MyGPT
 
 Esta é uma implementação da arquitetura do ChatGPT desenvolvida do zero por mim. O objetivo é prever a próxima palavra, ou seja, você começa com uma palavra ou frase, e o modelo completará o texto. Este é o princípio de treinamento do GPT.
 
