@@ -51,4 +51,4 @@ class Production(nn.Module):
 
 config = load_json_file("production/config.json")
 production = Production(config=config, device=torch.device('cpu'),
-                        state_dict="production/production_model.pth")
+                        state_dict="production/model.pth")

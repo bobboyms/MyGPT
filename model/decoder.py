@@ -5,7 +5,7 @@ from model.feed_forward import ResidualFeedForward
 from model.embedding import PositionalEmbedding
 
 
-class EncoderLayer(nn.Module):
+class DecoderLayer(nn.Module):
     def __init__(self, embed_dim: int, num_heads: int, dropout: float) -> None:
         """
         Initializes the EncoderLayer module.
@@ -15,7 +15,7 @@ class EncoderLayer(nn.Module):
             num_heads (int): The number of attention heads.
             dropout (float): The dropout rate.
         """
-        super(EncoderLayer, self).__init__()
+        super(DecoderLayer, self).__init__()
 
         self.att1 = ResidualAttention(embed_dim=embed_dim,
                                       num_heads=num_heads, dropout=dropout)
@@ -37,7 +37,7 @@ class EncoderLayer(nn.Module):
         return self.ff(x)
 
 
-class Encoder(nn.Module):
+class Decoder(nn.Module):
     def __init__(self, vocab_size: int, embed_dim: int, num_heads: int, dropout: float, num_layers: int = 3) -> None:
         """
         Initializes the Encoder module.
@@ -49,12 +49,12 @@ class Encoder(nn.Module):
             dropout (float): The dropout rate.
             num_layers (int): The number of encoder layers. Default is 3.
         """
-        super(Encoder, self).__init__()
+        super(Decoder, self).__init__()
 
         self.pe = PositionalEmbedding(vocab_size=vocab_size,
                                       embed_dim=embed_dim)
         self.layers = nn.ModuleList(
-            [EncoderLayer(embed_dim=embed_dim,
+            [DecoderLayer(embed_dim=embed_dim,
                           num_heads=num_heads, dropout=dropout) for _ in range(num_layers)])
 
         self.ff = nn.Sequential(
@@ -62,7 +62,6 @@ class Encoder(nn.Module):
             nn.GELU(),
             nn.Linear(embed_dim * 2, embed_dim),
             nn.Dropout(dropout),
-            # nn.GELU(),
         )
 
     def forward(self, x: torch.Tensor, padding_mask: torch.Tensor) -> torch.Tensor:

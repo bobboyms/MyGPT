@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from model.encoder import Encoder
+from model.decoder import Decoder
 
 
 class ModelLLM(nn.Module):
@@ -18,7 +18,7 @@ class ModelLLM(nn.Module):
         """
         super(ModelLLM, self).__init__()
 
-        self.encoder = Encoder(vocab_size, embed_dim,
+        self.decoder = Decoder(vocab_size, embed_dim,
                                num_heads, dropout, num_layers)
 
         self.linear = nn.Linear(embed_dim, vocab_size)
@@ -34,6 +34,6 @@ class ModelLLM(nn.Module):
         Returns:
             torch.Tensor: The output tensor after processing.
         """
-        logits = self.encoder(x, padding_mask)
+        logits = self.decoder(x, padding_mask)
         logits = self.linear(logits)
         return logits

@@ -7,12 +7,12 @@ from tokenizers.trainers import BpeTrainer
 from tokenizers.pre_tokenizers import Whitespace
 
 
-def copy_lines(arquivo_origem, arquivo_destino, num_linhas=1000):
-    with open(arquivo_origem, 'r') as origem:
-        linhas = [next(origem) for _ in range(num_linhas)]
+def copy_lines(source_file, destination_file, num_lines=1000):
+    with open(source_file, 'r') as source:
+        lines = [next(source) for _ in range(num_lines)]
 
-    with open(arquivo_destino, 'w') as destino:
-        destino.writelines(linhas)
+    with open(destination_file, 'w') as destination:
+        destination.writelines(lines)
 
 
 def create_dataset_for_next_word(sequence, window_size):
@@ -63,5 +63,6 @@ test_df = pd.DataFrame(np.array(test_dataset))
 train_df.to_csv("train.csv", index=False, header=False)
 test_df.to_csv("test.csv", index=False, header=False)
 
-copy_lines("train.csv", "little_train.csv", num_linhas=100000)
-copy_lines("test.csv", "little_test.csv", num_linhas=3000)
+ln = int(0.1 * 100000)
+copy_lines("train.csv", "little_train.csv", num_lines=100000)
+copy_lines("test.csv", "little_test.csv", num_lines=ln)

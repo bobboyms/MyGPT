@@ -23,7 +23,7 @@ if __name__ == "__main__":
         'dataset/portuguese/little_test.csv')
 
     embed_dim = 240
-    num_heads = 6
+    num_heads = 12
     dropout = 0.3
     num_layers = 6
 
@@ -46,7 +46,7 @@ if __name__ == "__main__":
 
     device = get_device()
     print(f"Device: {device}")
-    batch_size = 200
+    batch_size = 20
     print(f"Batch Size: {batch_size}")
     trainer = Trainer(model, train_dataset, test_dataset, device, batch_size)
-    trainer.train(num_epochs=200)
+    trainer.train()

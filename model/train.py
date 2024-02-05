@@ -8,6 +8,9 @@ from model.metrics import perplexity
 from torch.utils.data import Dataset
 from typing import Tuple
 from torch.optim import AdamW
+from torch.optim.lr_scheduler import _LRScheduler
+from torch.optim.optimizer import Optimizer
+
 torch.manual_seed(42)
 np.random.seed(42)
 
@@ -17,31 +20,53 @@ logging.basicConfig(level=logging.DEBUG,
                     filemode='a')
 
 
-class CustomLRScheduler(torch.optim.lr_scheduler._LRScheduler):
-    def __init__(self, optimizer, warmup_iters, lr_decay_iters, learning_rate, min_lr, last_epoch=-1):
-        self.warmup_iters = warmup_iters
-        self.lr_decay_iters = lr_decay_iters
-        self.learning_rate = learning_rate
-        self.min_lr = min_lr
-        super(CustomLRScheduler, self).__init__(optimizer, last_epoch)
+class CustomLRScheduler(_LRScheduler):
+    """
+    Um agendador de taxa de aprendizagem que ajusta a taxa de aprendizagem seguindo um aquecimento linear inicial,
+    seguido por um decaimento cosseno até uma taxa mínima especificada.
 
-    def get_lr(self):
+    Parâmetros:
+        optimizer (Optimizer): O otimizador para o qual a taxa de aprendizagem será ajustada.
+        warmup_iters (int): O número de iterações para o aquecimento linear.
+        lr_decay_iters (int): O número total de iterações após as quais a taxa de aprendizagem decai até min_lr.
+        learning_rate (float): A taxa de aprendizagem inicial/máxima.
+        min_lr (float): A taxa de aprendizagem mínima após o decaimento.
+        last_epoch (int): A última época indexada pelo agendador. O padrão é -1.
+
+    Retorna:
+        None
+    """
+
+    def __init__(self, optimizer: Optimizer, warmup_iters: int, lr_decay_iters: int,
+                 learning_rate: float, min_lr: float, last_epoch: int = -1) -> None:
+        self.warmup_iters: int = warmup_iters
+        self.lr_decay_iters: int = lr_decay_iters
+        self.learning_rate: float = learning_rate
+        self.min_lr: float = min_lr
+        super().__init__(optimizer, last_epoch)
+
+    def get_lr(self) -> list[float]:
+        """
+        Calcula e retorna a nova taxa de aprendizagem para cada grupo de parâmetros do otimizador,
+        com base na estratégia de aquecimento e decaimento definida.
+
+        Esse código foi inspirado no código de Andrej karpathy
+        https://github.com/karpathy/nanoGPT/blob/master/train.py#L228
+
+        Retorna:
+            list[float]: Uma lista contendo a nova taxa de aprendizagem para cada grupo de parâmetros.
+        """
         if self._step_count < self.warmup_iters:
-            # Linear warmup
             lr = self.learning_rate * self._step_count / self.warmup_iters
         elif self._step_count > self.lr_decay_iters:
-            # After lr_decay_iters, return min_lr
             lr = self.min_lr
         else:
-            # Cosine decay
             decay_ratio = (self._step_count - self.warmup_iters) / \
                 (self.lr_decay_iters - self.warmup_iters)
-            assert 0 <= decay_ratio <= 1
-            # coeff ranges from 0 to 1
+            assert 0 <= decay_ratio <= 1, "Decay ratio should be between 0 and 1."
             coeff = 0.5 * (1.0 + math.cos(math.pi * decay_ratio))
             lr = self.min_lr + coeff * (self.learning_rate - self.min_lr)
 
-        # lr = self.learning_rate
         return [lr for _ in self.optimizer.param_groups]
 
 
@@ -73,7 +98,7 @@ class Trainer:
 
         # Configuração do Otimizador e Scheduler
         self.optimizer = AdamW(self.model.parameters(),
-                               lr=3.6e-05, weight_decay=1e-1)  # 3.6e-05
+                               lr=3.6e-05, weight_decay=1e-3)  # 3.6e-05
 
         iterations = self.train_dataset.__len__() // batch_size
         warmup_iters = 2000  # 5 * iterations
@@ -193,7 +218,8 @@ class Trainer:
 
     def train(self, num_epochs: int = 5000) -> None:
         """
-        Executa o processo de treinamento, alternando entre treino e teste, e aplicando parada antecipada se necessário.
+        Executa o processo de treinamento, alternando entre treino e teste, 
+        e aplicando parada antecipada se necessário.
         """
         best_loss = float('inf')
         epochs_no_improve = 0
@@ -211,14 +237,14 @@ class Trainer:
                 print("Current learning rate:", group['lr'])
 
             # Verificação de parada antecipada
-            if test_loss < best_loss:
-                best_loss = test_loss
-                epochs_no_improve = 0
-            else:
-                epochs_no_improve += 1
+            # if test_loss < best_loss:
+            #     best_loss = test_loss
+            #     epochs_no_improve = 0
+            # else:
+            #     epochs_no_improve += 1
 
-            if epochs_no_improve == self.n_epochs_stop:
-                msg = f'Parada antecipada na época {epoch + 1}'
-                print(msg)
-                logging.info(msg)
-                break
+            # if epochs_no_improve == self.n_epochs_stop:
+            #     msg = f'Parada antecipada na época {epoch + 1}'
+            #     print(msg)
+            #     logging.info(msg)
+            #     break
